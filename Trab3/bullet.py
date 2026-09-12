@@ -1,61 +1,101 @@
-import pygame
-from abc import ABC, abstractmethod
-from util import colored_sprite, EventHandler
-
-
 import math
 
-def rotate(pos, angle, axis = (0,0)):
+import pygame
+
+from util import EventHandler
+
+
+WIDTH = 800
+HEIGHT = 600
+
+
+def rotate(pos, angle, axis=(0, 0)):
     angle = math.radians(angle)
     x, y = pos
     ax, ay = axis
-
-    # Translate so axis is the origin
     x -= ax
     y -= ay
 
-    # Rotate
     cos_a = math.cos(angle)
     sin_a = math.sin(angle)
-
     rx = x * cos_a - y * sin_a
     ry = x * sin_a + y * cos_a
-
-    # Translate back
     return rx + ax, ry + ay
 
-class Bullet (ABC):
 
-    def __init__(self, pos, angle = 0, radius = 16, life_time = None):
-        self.pos = pos
-        self.origin = pygame.Vector2(pos)
-        self.life_time = life_time
-        self.angle = angle
-        self.elapsed = 0
+class Bullet:
+    def __init__(
+        self,
+        pos,
+        velocity,
+        radius=6,
+        life_time=70,
+        damage=1,
+        color=(255, 232, 89),
+        owner="player",
+    ):
+        self.pos = pygame.Vector2(pos)
+        self.velocity = pygame.Vector2(velocity)
         self.radius = radius
-
-        self.sprite = colored_sprite ((255, 0, 0), (self.radius*2, self.radius*2))
+        self.life_time = life_time
+        self.damage = damage
+        self.color = color
+        self.owner = owner
+        self.elapsed = 0
 
     def update(self, dt):
-
         self.elapsed += dt
-        if self.life_time and self.elapsed >= self.life_time:
-                self.destroy()       
+        self.move(dt)
 
-        self.pos = rotate(self.move(), self.angle)+self.origin
+        margin = self.radius + 30
+        outside = (
+            self.pos.x < -margin
+            or self.pos.x > WIDTH + margin
+            or self.pos.y < -margin
+            or self.pos.y > HEIGHT + margin
+        )
+        if self.elapsed >= self.life_time or outside:
+            self.destroy()
+
+    def move(self, dt):
+        self.pos += self.velocity * dt
 
     def draw(self, screen):
-        screen.blit(self.sprite, self.pos)
+        pygame.draw.circle(screen, (64, 38, 9), self.pos, self.radius + 2)
+        pygame.draw.circle(screen, self.color, self.pos, self.radius)
 
-    @abstractmethod
-    def move(self):
-        pass
+    def destroy(self):
+        EventHandler().notify("DestroyObj", self)
 
-    def destroy(self): # pede para deletar
-        EventHandler().notify("DestroyObj", self) # avisa o mundo que saiu da tela
 
-class sinBullet (Bullet):
-    # exemplo, façam algo mais rebuscado
+class PlayerBullet(Bullet):
+    def __init__(self, pos, direction, speed=11, radius=5, damage=1, color=(255, 232, 89)):
+        direction = pygame.Vector2(direction)
+        if direction.length_squared() == 0:
+            direction = pygame.Vector2(1, 0)
+        super().__init__(
+            pos=pos,
+            velocity=direction.normalize() * speed,
+            radius=radius,
+            damage=damage,
+            color=color,
+            owner="player",
+        )
 
-    def move(self):
-        return pygame.Vector2(self.elapsed, math.sin(self.elapsed/50)*50) 
+
+class sinBullet(Bullet):
+    def __init__(self, pos, angle=0, radius=16, life_time=240):
+        self.origin = pygame.Vector2(pos)
+        self.angle = angle
+        super().__init__(
+            pos=pos,
+            velocity=(0, 0),
+            radius=radius,
+            life_time=life_time,
+            color=(255, 89, 89),
+            owner="enemy",
+        )
+
+    def move(self, dt):
+        offset = pygame.Vector2(self.elapsed * 4, math.sin(self.elapsed / 8) * 50)
+        self.pos = self.origin + pygame.Vector2(rotate(offset, self.angle))
